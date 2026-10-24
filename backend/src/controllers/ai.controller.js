@@ -4,10 +4,19 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy OpenAI client initialization
+let openaiClient = null;
+const getOpenAIClient = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    return null;
+  }
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+};
 
 // Rate limiter for AI endpoints
 export const aiRateLimiter = rateLimit({
@@ -70,7 +79,8 @@ export const generateSegmentRules = async (req, res) => {
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    const openai = getOpenAIClient();
+    if (!openai) {
       return res.status(500).json({ 
         error: 'Configuration error',
         details: 'OpenAI API key is not configured'
@@ -128,8 +138,9 @@ export const generateMessageSuggestions = async (req, res) => {
       });
     }
 
+    const openai = getOpenAIClient();
     // Check if OpenAI API key is configured
-    if (!process.env.OPENAI_API_KEY) {
+    if (!openai) {
       console.log('OpenAI API key not configured, using fallback templates');
       return res.json(getFallbackSuggestions(objective, audience));
     }

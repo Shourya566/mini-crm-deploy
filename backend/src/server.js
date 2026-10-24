@@ -28,17 +28,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Configure CORS based on environment
+// Configure CORS
 const allowedOrigins = [
-  'http://localhost:5173', // Development frontend
-  'http://localhost:5174', // Additional development frontend port
-  'https://mini-crm-frontend-yt2n.onrender.com', // Production frontend
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
 ];
 
-// Simplified CORS configuration
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://mini-crm-frontend-yt2n.onrender.com',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or same-origin)
+    if (!origin) return callback(null, true);
+    if (!isProduction || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Accept'],
@@ -52,25 +62,62 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
+// Resolve MongoDB URI (with in-memory fallback for development)
+let mongoUri = process.env.MONGODB_URI;
+if (!mongoUri || mongoUri.trim() === '') {
+  if (!isProduction) {
+    console.log('ℹ️  No MONGODB_URI found. Initializing in-memory MongoDB for local development...');
+    try {
+      const { MongoMemoryServer } = await import('mongodb-memory-server');
+      const mongod = await MongoMemoryServer.create();
+      mongoUri = mongod.getUri();
+      process.env.MONGODB_URI = mongoUri;
+      console.log(`✅ In-memory MongoDB running at: ${mongoUri}`);
+    } catch (err) {
+      console.error('Failed to start in-memory MongoDB server:', err);
+      process.exit(1);
+    }
+  } else {
+    console.error('❌ Fatal error: MONGODB_URI is required in production.');
+    process.exit(1);
+  }
+}
+
+// Connect to MongoDB
+try {
+  await mongoose.connect(mongoUri, {
+    serverSelectionTimeoutMS: 5000,
+  });
+  console.log('Connected to MongoDB');
+  
+  // Seed customers data if needed
+  seedCustomers().catch(err => {
+    console.error('Error seeding customers:', err);
+  });
+} catch (err) {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+}
+
 // Session configuration
 app.use(session({
   secret: process.env.JWT_SECRET || 'super-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
-    mongoUrl: process.env.MONGODB_URI,
+    client: mongoose.connection.getClient(),
     ttl: 24 * 60 * 60, // 1 day
     autoRemove: 'native',
     touchAfter: 24 * 3600 // time period in seconds
   }),
   cookie: {
-    secure: true, // Always use secure cookies in production
+    secure: isProduction, // Secure only in production over HTTPS
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 1 day
-    sameSite: 'none', // Required for cross-site cookies
+    sameSite: isProduction ? 'none' : 'lax', // Lax for local dev HTTP, None for cross-site prod
     path: '/'
   },
-  name: 'bolt.sid' // Custom session cookie name
+  name: 'bolt.sid'
 }));
 
 // Initialize Passport
@@ -78,18 +125,19 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Debug middleware (only in development)
-if (process.env.NODE_ENV === 'development') {
-app.use((req, res, next) => {
-  console.log('=== Debug Info ===');
-  console.log('Session ID:', req.sessionID);
-  console.log('Session:', req.session);
-  console.log('Is Authenticated:', req.isAuthenticated());
-  console.log('User:', req.user);
-  console.log('Cookies:', req.cookies);
-  console.log('================');
-  next();
-});
+if (!isProduction) {
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/auth') || req.path.startsWith('/api')) {
+      console.log(`[${req.method}] ${req.path} | Authenticated: ${req.isAuthenticated()}`);
+    }
+    next();
+  });
 }
+
+// Health check routes
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Mini CRM API is healthy', uptime: process.uptime() });
+});
 
 // Routes
 app.use('/auth', authRoutes);
@@ -110,33 +158,11 @@ app.use((err, req, res, next) => {
   });
 });
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI, {
-  // useNewUrlParser: true,
-  // useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  // ssl: false,
-  // tls: false
-})
-  .then(() => {
-    console.log('Connected to MongoDB');
-    
-    // Seed customers data if needed
-    seedCustomers().catch(err => {
-      console.error('Error seeding customers:', err);
-    });
-    
-    // Start server
-    const PORT = process.env.PORT || 3001;
-    console.log(`Starting server on port ${PORT}...`);
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  });
+// Start server
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
