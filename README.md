@@ -21,7 +21,7 @@ A full-stack Customer Relationship Management application with authentication, c
 
 This application can be deployed to Render with a single click:
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Shivam-0803/mini-crm-.git)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Shourya566/mini-crm-deploy)
 
 ## Environment Variables
 
@@ -33,10 +33,14 @@ Create a `.env` file in the backend directory with the following variables:
 PORT=3001
 NODE_ENV=development
 MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRES_IN=24h
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 GOOGLE_CALLBACK_URL=http://localhost:3001/auth/google/callback
 FRONTEND_URL=http://localhost:5174
+CORS_ORIGIN=http://localhost:5174
+OPENAI_API_KEY=your_openai_api_key  # Optional
 ```
 
 ### Frontend Environment Variables
@@ -45,14 +49,15 @@ Create a `.env` file in the crm-frontend directory with the following variable:
 
 ```
 VITE_API_URL=http://localhost:3001
+VITE_AUTH_URL=http://localhost:3001/auth
 ```
 
 ## Local Development
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/Shivam-0803/mini-crm-.git
-cd mini-crm-
+git clone https://github.com/Shourya566/mini-crm-deploy.git
+cd mini-crm-deploy
 ```
 
 2. Install dependencies:
