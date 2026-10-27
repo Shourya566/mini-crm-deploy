@@ -134,7 +134,31 @@ if (!isProduction) {
   });
 }
 
-// Health check routes
+// Informational root route
+app.get('/', (req, res) => {
+  res.status(200).json({
+    name: 'Mini CRM API',
+    status: 'running',
+    healthCheck: '/healthz',
+    endpoints: {
+      health: '/healthz',
+      auth: {
+        me: '/auth/me',
+        google: '/auth/google',
+        logout: '/auth/logout'
+      },
+      api: {
+        users: '/api/users',
+        campaigns: '/api/campaigns',
+        segments: '/api/segments',
+        deliveryReceipts: '/api/delivery-receipts',
+        ai: '/api/ai'
+      }
+    }
+  });
+});
+
+// Health check route
 app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Mini CRM API is healthy', uptime: process.uptime() });
 });

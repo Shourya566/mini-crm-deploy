@@ -5,6 +5,11 @@
 backend/.env
 crm-frontend/.env
 
+# Token notes and upstream scratch files
+github_token_instructions.txt
+push_with_new_token.txt
+SECURITY_ALERT.txt
+
 # Dependency directories
 node_modules/
 dist/

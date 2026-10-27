@@ -1,1 +1,0 @@
-To push with a new token, use this command format (replace YOUR_NEW_TOKEN with the actual token): git push -u https://Shivam-0803:YOUR_NEW_TOKEN@github.com/Shivam-0803/mini-crm-.git main

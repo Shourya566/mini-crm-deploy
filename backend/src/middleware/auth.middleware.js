@@ -1,41 +1,56 @@
+/**
+ * Authentication Middleware
+ * 
+ * Enforces session-based authentication on protected routes.
+ * In production (NODE_ENV=production), authentication is strictly required.
+ * In development, an explicit opt-in environment variable (ALLOW_DEV_AUTH_BYPASS=true)
+ * can be used for local offline testing.
+ */
+
 export const isAuthenticated = (req, res, next) => {
-  // TEMPORARY: Always allow authentication for debugging
-  console.log('⚠️ TEMPORARY AUTHENTICATION BYPASS ENABLED');
-  return next();
-  
-  // Original authentication logic below (currently bypassed)
-  /*
-  // Log authentication attempt for debugging
-  console.log('Authentication check:', {
-    isAuthenticated: req.isAuthenticated(),
-    sessionID: req.sessionID,
-    hasUser: !!req.user,
-    userId: req.user?.id
-  });
-  
-  if (req.isAuthenticated()) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isDevBypass = !isProduction && process.env.ALLOW_DEV_AUTH_BYPASS === 'true';
+
+  // Development-only bypass (strictly disabled in production)
+  if (isDevBypass) {
+    if (!req.user) {
+      req.user = {
+        id: 'dev-user-123',
+        googleId: '123456789',
+        email: 'dev@example.com',
+        displayName: 'Development User',
+        role: 'admin'
+      };
+    }
     return next();
   }
-  
-  // Return more detailed error information
-  res.status(401).json({ 
-    message: 'Unauthorized', 
-    details: 'User is not authenticated',
-    sessionExists: !!req.session,
-    sessionID: req.sessionID || 'no-session-id'
+
+  // Standard authentication check via Passport session
+  if (typeof req.isAuthenticated === 'function' && req.isAuthenticated()) {
+    return next();
+  }
+
+  return res.status(401).json({ 
+    error: 'Unauthorized', 
+    message: 'User is not authenticated'
   });
-  */
 };
 
 export const isAdmin = (req, res, next) => {
-  // TEMPORARY: Always allow admin access for debugging
-  return next();
-  
-  // Original admin check logic (currently bypassed)
-  /*
-  if (req.isAuthenticated() && req.user.role === 'admin') {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isDevBypass = !isProduction && process.env.ALLOW_DEV_AUTH_BYPASS === 'true';
+
+  // Development-only bypass (strictly disabled in production)
+  if (isDevBypass) {
     return next();
   }
-  res.status(403).json({ message: 'Forbidden' });
-  */
-}; 
+
+  if (typeof req.isAuthenticated === 'function' && req.isAuthenticated() && req.user?.role === 'admin') {
+    return next();
+  }
+
+  return res.status(403).json({ 
+    error: 'Forbidden', 
+    message: 'Admin access required' 
+  });
+};
