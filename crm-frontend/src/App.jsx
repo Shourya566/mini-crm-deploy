@@ -68,6 +68,9 @@ function App() {
               }
             />
           </Route>
+
+          {/* Fallback route to prevent blank screens on unknown paths */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AnimatePresence>
       <Toaster position="top-right" />

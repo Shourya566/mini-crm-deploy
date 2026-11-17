@@ -19,15 +19,17 @@ export const AuthProvider = ({ children }) => {
         setUser(response.data.user);
         setError(null);
         return true; // Authentication successful
-      } else {
-        setUser(null);
-        return false; // Authentication failed
       }
-    } catch (error) {
+
       setUser(null);
-      if (error.response?.status !== 401) {
-        console.error('Auth check error:', error.response || error);
-        setError('Authentication check failed');
+      return false; // Authentication failed
+    } catch (err) {
+      setUser(null);
+      if (err.response?.status === 401) {
+        setError(null);
+      } else {
+        console.error('Auth check error:', err.response || err);
+        setError('Unable to reach the authentication server. Please try signing in again.');
       }
       return false; // Authentication failed
     } finally {
@@ -38,27 +40,28 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const authSuccess = urlParams.get('auth_success');
-    const uid = urlParams.get('uid');
+    const authError = urlParams.get('error');
+
+    if (authError) {
+      setUser(null);
+      setError('Authentication failed. Please try signing in again.');
+      setLoading(false);
+      return;
+    }
     
     if (authSuccess === 'true') {
-      console.log('Detected successful OAuth callback with user ID:', uid);
-      
-      // First try to check authentication
-      checkAuth().then(isAuthenticated => {
-        if (isAuthenticated) {
-          console.log('Successfully authenticated, navigating to dashboard');
-          // Clear the URL parameters
-          window.history.replaceState({}, document.title, '/dashboard');
-          navigate('/dashboard');
+      checkAuth().then((authenticated) => {
+        if (authenticated) {
+          navigate('/dashboard', { replace: true });
         } else {
-          console.error('Authentication verification failed after OAuth callback');
-          navigate('/login');
+          setError('Sign-in completed, but your session could not be verified. Please ensure cookies are enabled and try again.');
+          navigate('/login', { replace: true });
         }
       });
       return;
     }
     
-    if(location.pathname !== '/login') {
+    if (location.pathname !== '/login') {
       checkAuth();
     } else {
       setLoading(false);
@@ -67,21 +70,12 @@ export const AuthProvider = ({ children }) => {
 
   const login = () => {
     try {
-      console.log('Initiating Google OAuth login...');
-      // Ensure we're using the fully qualified Google auth URL
+      setError(null);
       const authBaseUrl = import.meta.env.VITE_AUTH_URL || `${api.defaults.baseURL}/auth`;
-      
-      // Remove any trailing slashes for consistency
-      const cleanAuthUrl = authBaseUrl.endsWith('/') 
-        ? authBaseUrl.slice(0, -1) 
-        : authBaseUrl;
-      
-      // Target the Google auth endpoint
+      const cleanAuthUrl = authBaseUrl.trim().replace(/\/+$/, '');
       window.location.href = `${cleanAuthUrl}/google`;
-      
-      console.log(`Redirecting to: ${cleanAuthUrl}/google`);
-    } catch (error) {
-      console.error('Login redirect failed:', error);
+    } catch (err) {
+      console.error('Login redirect failed:', err);
       setError('Login failed');
     }
   };

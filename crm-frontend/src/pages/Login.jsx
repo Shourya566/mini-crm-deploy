@@ -6,11 +6,11 @@ import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, error } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -25,9 +25,15 @@ const Login = () => {
         <div className="flex flex-col space-y-2 text-center">
           <h2 className="text-2xl font-bold tracking-tight">Welcome to Mini CRM</h2>
           <p className="text-sm text-muted-foreground">
-            Enter your email to sign in to your account
+            Sign in with your Google account to continue
           </p>
         </div>
+
+        {error && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive text-center">
+            {error}
+          </div>
+        )}
 
         <div className="mt-8">
           <Button
