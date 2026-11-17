@@ -30,37 +30,66 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Configure CORS
-const allowedOrigins = [
+// Trust reverse proxy in production (essential for Render / HTTPS cookies)
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
+// Helper to parse comma-separated origin strings
+const parseOrigins = (str) => {
+  if (!str) return [];
+  return str.split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean);
+};
+
+// Configure CORS allowed origins
+const defaultLocalOrigins = !isProduction ? [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
-  ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
-  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+] : [];
+
+const configuredOrigins = [
+  ...parseOrigins(process.env.CORS_ORIGIN),
+  ...parseOrigins(process.env.FRONTEND_URL),
 ];
 
-app.use(cors({
+const allowedOrigins = Array.from(new Set([
+  ...defaultLocalOrigins,
+  ...configuredOrigins,
+]));
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // Allow curl, health checks, or same-origin requests
+  if (!isProduction) return true; // Allow local dev origins
+
+  const cleanOrigin = origin.replace(/\/+$/, '');
+  return allowedOrigins.includes(cleanOrigin);
+};
+
+const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, or same-origin)
-    if (!origin) return callback(null, true);
-    if (!isProduction || allowedOrigins.includes(origin)) {
+    if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
-    return callback(null, true);
+    console.warn(`[CORS] Blocked request from disallowed origin: ${origin}`);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Accept'],
-  exposedHeaders: ['Access-Control-Allow-Origin', 'Access-Control-Allow-Credentials']
-}));
+  exposedHeaders: ['Access-Control-Allow-Origin', 'Access-Control-Allow-Credentials'],
+};
 
-// Add preflight OPTIONS handling
-app.options('*', cors());
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(cors(corsOptions));
+
+// Handle CORS preflight for all routes with the same credentials configuration
+app.options('*', cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
+app.use(morgan(isProduction ? 'combined' : 'dev'));
 
 // Resolve MongoDB URI (with in-memory fallback for development)
 let mongoUri = process.env.MONGODB_URI;
@@ -86,7 +115,7 @@ if (!mongoUri || mongoUri.trim() === '') {
 // Connect to MongoDB
 try {
   await mongoose.connect(mongoUri, {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 10000,
   });
   console.log('Connected to MongoDB');
   
@@ -99,9 +128,16 @@ try {
   process.exit(1);
 }
 
+// Validate session secret in production
+const sessionSecret = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+if (isProduction && !sessionSecret) {
+  console.error('❌ Fatal error: JWT_SECRET (or SESSION_SECRET) is required in production.');
+  process.exit(1);
+}
+
 // Session configuration
 app.use(session({
-  secret: process.env.JWT_SECRET || 'super-secret-key-change-in-production',
+  secret: sessionSecret || 'dev-only-session-secret',
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
@@ -184,7 +220,7 @@ app.use((err, req, res, next) => {
 
 // Start server
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 });
 

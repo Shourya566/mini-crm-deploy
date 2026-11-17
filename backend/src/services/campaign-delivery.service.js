@@ -4,8 +4,16 @@ import CommunicationLog from '../models/communication-log.model.js';
 import vendorApi from './vendor-api.service.js';
 
 // Configuration
+const getCallbackUrl = () => {
+  if (process.env.DELIVERY_CALLBACK_URL) {
+    return process.env.DELIVERY_CALLBACK_URL;
+  }
+  const backendBase = process.env.BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001');
+  return backendBase ? `${backendBase.replace(/\/+$/, '')}/api/delivery-receipts` : '/api/delivery-receipts';
+};
+
 const CONFIG = {
-  callbackUrl: process.env.DELIVERY_CALLBACK_URL || 'https://mini-crm-backend-3ri2.onrender.com/api/delivery-receipts',
+  callbackUrl: getCallbackUrl(),
   batchSize: 25, // Process customers in batches of 25
   processingInterval: 100, // Small delay between batches (ms)
 };

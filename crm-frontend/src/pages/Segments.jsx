@@ -193,11 +193,24 @@ const RuleBuilder = ({ rules, setRules }) => {
                   </Label>
                   <Select
                     id={`condition-operator-${index}`}
-                    value={condition.operator}
+                    value={
+                      condition.operator === 'greaterThan' ? '>' :
+                      condition.operator === 'lessThan' ? '<' :
+                      condition.operator === 'equals' ? '=' :
+                      condition.operator || '>'
+                    }
                     onValueChange={(value) => updateCondition(index, 'operator', value)}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Operator" />
+                      <SelectValue placeholder="Operator">
+                        {condition.operator === '>' || condition.operator === 'greaterThan' ? 'Greater than (>)' :
+                         condition.operator === '<' || condition.operator === 'lessThan' ? 'Less than (<)' :
+                         condition.operator === '=' || condition.operator === 'equals' ? 'Equal to (=)' :
+                         condition.operator === '>=' ? 'Greater/Equal (≥)' :
+                         condition.operator === '<=' ? 'Less/Equal (≤)' :
+                         condition.operator === 'contains' ? 'Contains' :
+                         condition.operator || 'Operator'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value=">">Greater than (&gt;)</SelectItem>
@@ -205,9 +218,7 @@ const RuleBuilder = ({ rules, setRules }) => {
                       <SelectItem value="=">Equal to (=)</SelectItem>
                       <SelectItem value=">=">Greater/Equal (≥)</SelectItem>
                       <SelectItem value="<=">Less/Equal (≤)</SelectItem>
-                      {condition.type === 'location' && (
-                        <SelectItem value="contains">Contains</SelectItem>
-                      )}
+                      <SelectItem value="contains">Contains</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -484,8 +495,12 @@ const Segments = () => {
       setError(null);
     } catch (err) {
       console.error('Error fetching segments:', err);
-      setError(err.message || 'Failed to load segments');
-      toast.error('Failed to load segments. Please try again.');
+      const errorMessage = err.response?.data?.error?.message || 
+                           err.response?.data?.message || 
+                           err.message || 
+                           'Failed to load segments';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -554,11 +569,11 @@ const Segments = () => {
     // For dynamic segments, ensure at least one valid condition
     if (formData.type === 'dynamic') {
       const validConditions = rules.conditions.filter(
-        c => c.type && c.operator && c.value
+        c => c.type && c.operator && c.value !== undefined && c.value !== ''
       );
       
       if (validConditions.length === 0) {
-        toast.error('Please add at least one valid condition');
+        toast.error('Please add at least one valid condition with a value');
         return;
       }
     }
@@ -567,19 +582,31 @@ const Segments = () => {
 
     try {
       // Convert rules to criteria format for backend
-      const criteria = rules.conditions.map(condition => ({
-        field: condition.type,
-        operator: condition.operator === '>' ? 'greaterThan' :
-                 condition.operator === '<' ? 'lessThan' :
-                 condition.operator === '=' ? 'equals' :
-                 condition.operator,
-        value: condition.value
-      }));
+      const criteria = rules.conditions
+        .filter(c => c.type && c.operator && c.value !== undefined && c.value !== '')
+        .map(condition => {
+          // Parse numeric value if applicable
+          const isNumericField = condition.type !== 'location';
+          const parsedValue = isNumericField && !isNaN(Number(condition.value)) && condition.value.toString().trim() !== ''
+            ? Number(condition.value)
+            : condition.value;
+
+          return {
+            field: condition.type,
+            operator: condition.operator === '>' || condition.operator === '>=' ? 'greaterThan' :
+                     condition.operator === '<' || condition.operator === '<=' ? 'lessThan' :
+                     condition.operator === '=' ? 'equals' :
+                     condition.operator,
+            value: parsedValue
+          };
+        });
       
       const segmentData = {
-        ...formData,
+        name: formData.name.trim(),
+        description: formData.description ? formData.description.trim() : '',
+        type: formData.type,
         criteria,
-        // Use default user ID for testing
+        // Default user ID for testing
         createdBy: '645a1d7c16f68e412f82f231'
       };
       
@@ -590,20 +617,25 @@ const Segments = () => {
       } else {
         result = await createSegment(segmentData);
         
-        // Create a campaign based on this segment
-        await createCampaign({
-          name: `Campaign for ${formData.name}`,
-          description: `Auto-created campaign for segment: ${formData.name}`,
-          type: 'email',
-          status: 'draft',
-          segmentRules: rules,
-          content: {
-            subject: `Special offer for ${formData.name}`,
-            body: `Hello, this is a campaign created for the ${formData.name} segment.`
-          }
-        });
+        // Auto-create companion campaign if applicable (safely isolated)
+        try {
+          await createCampaign({
+            name: `Campaign for ${formData.name.trim()}`,
+            description: `Auto-created campaign for segment: ${formData.name.trim()}`,
+            type: 'email',
+            status: 'draft',
+            segmentRules: rules,
+            content: {
+              subject: `Special offer for ${formData.name.trim()}`,
+              body: `Hello, this is a campaign created for the ${formData.name.trim()} segment.`
+            }
+          });
+          toast.success('Segment created and campaign initiated!', { id: toastId });
+        } catch (campaignErr) {
+          console.warn('Auto-campaign creation warning:', campaignErr);
+          toast.success('Segment created successfully!', { id: toastId });
+        }
         
-        toast.success('Segment created and campaign initiated!', { id: toastId });
         setHighlightedSegmentId(result._id);
         
         // Remove highlight after 3 seconds
@@ -616,7 +648,12 @@ const Segments = () => {
       await fetchSegments();
     } catch (err) {
       console.error('Error saving segment:', err);
-      toast.error(err.message || `Failed to ${editingSegment ? 'update' : 'create'} segment`, { id: toastId });
+      const errorMessage = err.response?.data?.error?.message || 
+                           err.response?.data?.message || 
+                           (typeof err.response?.data?.error === 'string' ? err.response?.data?.error : null) || 
+                           err.message || 
+                           `Failed to ${editingSegment ? 'update' : 'create'} segment`;
+      toast.error(errorMessage, { id: toastId });
     }
   };
 
@@ -633,7 +670,11 @@ const Segments = () => {
       await fetchSegments();
     } catch (err) {
       console.error('Error deleting segment:', err);
-      toast.error(err.message || 'Failed to delete segment', { id: toastId });
+      const errorMessage = err.response?.data?.error?.message || 
+                           err.response?.data?.message || 
+                           err.message || 
+                           'Failed to delete segment';
+      toast.error(errorMessage, { id: toastId });
     }
   };
 

@@ -120,27 +120,27 @@ customerSchema.statics.findBySegmentRules = async function(rules) {
       switch (condition.type) {
         case 'spend':
           conditionQuery = { 'stats.totalSpend': {} };
-          if (condition.operator === '>') conditionQuery['stats.totalSpend'].$gt = parseFloat(condition.value);
-          else if (condition.operator === '<') conditionQuery['stats.totalSpend'].$lt = parseFloat(condition.value);
-          else if (condition.operator === '=') conditionQuery['stats.totalSpend'] = parseFloat(condition.value);
+          if (condition.operator === '>' || condition.operator === 'greaterThan') conditionQuery['stats.totalSpend'].$gt = parseFloat(condition.value);
+          else if (condition.operator === '<' || condition.operator === 'lessThan') conditionQuery['stats.totalSpend'].$lt = parseFloat(condition.value);
+          else if (condition.operator === '=' || condition.operator === 'equals') conditionQuery['stats.totalSpend'] = parseFloat(condition.value);
           else if (condition.operator === '>=') conditionQuery['stats.totalSpend'].$gte = parseFloat(condition.value);
           else if (condition.operator === '<=') conditionQuery['stats.totalSpend'].$lte = parseFloat(condition.value);
           break;
           
         case 'visits':
           conditionQuery = { 'stats.visits': {} };
-          if (condition.operator === '>') conditionQuery['stats.visits'].$gt = parseInt(condition.value);
-          else if (condition.operator === '<') conditionQuery['stats.visits'].$lt = parseInt(condition.value);
-          else if (condition.operator === '=') conditionQuery['stats.visits'] = parseInt(condition.value);
+          if (condition.operator === '>' || condition.operator === 'greaterThan') conditionQuery['stats.visits'].$gt = parseInt(condition.value);
+          else if (condition.operator === '<' || condition.operator === 'lessThan') conditionQuery['stats.visits'].$lt = parseInt(condition.value);
+          else if (condition.operator === '=' || condition.operator === 'equals') conditionQuery['stats.visits'] = parseInt(condition.value);
           else if (condition.operator === '>=') conditionQuery['stats.visits'].$gte = parseInt(condition.value);
           else if (condition.operator === '<=') conditionQuery['stats.visits'].$lte = parseInt(condition.value);
           break;
           
         case 'purchases':
           conditionQuery = { 'stats.purchases': {} };
-          if (condition.operator === '>') conditionQuery['stats.purchases'].$gt = parseInt(condition.value);
-          else if (condition.operator === '<') conditionQuery['stats.purchases'].$lt = parseInt(condition.value);
-          else if (condition.operator === '=') conditionQuery['stats.purchases'] = parseInt(condition.value);
+          if (condition.operator === '>' || condition.operator === 'greaterThan') conditionQuery['stats.purchases'].$gt = parseInt(condition.value);
+          else if (condition.operator === '<' || condition.operator === 'lessThan') conditionQuery['stats.purchases'].$lt = parseInt(condition.value);
+          else if (condition.operator === '=' || condition.operator === 'equals') conditionQuery['stats.purchases'] = parseInt(condition.value);
           else if (condition.operator === '>=') conditionQuery['stats.purchases'].$gte = parseInt(condition.value);
           else if (condition.operator === '<=') conditionQuery['stats.purchases'].$lte = parseInt(condition.value);
           break;
@@ -151,9 +151,9 @@ customerSchema.statics.findBySegmentRules = async function(rules) {
           const cutoffDate = new Date();
           cutoffDate.setDate(cutoffDate.getDate() - inactiveDays);
           
-          if (condition.operator === '>') conditionQuery['stats.lastActive'] = { $lt: cutoffDate };
-          else if (condition.operator === '<') conditionQuery['stats.lastActive'] = { $gt: cutoffDate };
-          else if (condition.operator === '=') {
+          if (condition.operator === '>' || condition.operator === 'greaterThan') conditionQuery['stats.lastActive'] = { $lt: cutoffDate };
+          else if (condition.operator === '<' || condition.operator === 'lessThan') conditionQuery['stats.lastActive'] = { $gt: cutoffDate };
+          else if (condition.operator === '=' || condition.operator === 'equals') {
             const startDate = new Date(cutoffDate);
             const endDate = new Date(cutoffDate);
             startDate.setDate(startDate.getDate() - 1);
@@ -163,7 +163,7 @@ customerSchema.statics.findBySegmentRules = async function(rules) {
           break;
           
         case 'location':
-          if (condition.operator === 'contains') {
+          if (condition.operator === 'contains' || condition.operator === '=' || condition.operator === 'equals') {
             conditionQuery.$or = [
               { 'location.country': { $regex: condition.value, $options: 'i' } },
               { 'location.state': { $regex: condition.value, $options: 'i' } },

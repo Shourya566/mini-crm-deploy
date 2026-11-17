@@ -48,7 +48,7 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
     )}
     {...props}
   >
-    <span className="flex-1">{children}</span>
+    <RadixSelect.ItemText className="flex-1">{children}</RadixSelect.ItemText>
     <RadixSelect.ItemIndicator className="absolute right-2 flex items-center">
       <Check className="h-4 w-4" />
     </RadixSelect.ItemIndicator>

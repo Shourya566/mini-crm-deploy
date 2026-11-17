@@ -24,8 +24,11 @@ router.get('/debug-env', (req, res) => {
   }
 });
 
-// Debug endpoint for session and authentication
+// Debug endpoint for session and authentication (disabled in production)
 router.get('/debug-session', (req, res) => {
+  if (process.env.NODE_ENV !== 'development' && process.env.DEBUG_AUTH !== 'true') {
+    return res.status(403).json({ message: 'Debug endpoint disabled in production' });
+  }
   res.json({
     isAuthenticated: req.isAuthenticated(),
     sessionID: req.sessionID,
@@ -35,13 +38,16 @@ router.get('/debug-session', (req, res) => {
   });
 });
 
-// Debug endpoint to test cookie setting
+// Debug endpoint to test cookie setting (disabled in production)
 router.get('/test-cookie', (req, res) => {
+  if (process.env.NODE_ENV !== 'development' && process.env.DEBUG_AUTH !== 'true') {
+    return res.status(403).json({ message: 'Debug endpoint disabled in production' });
+  }
   // Set a test cookie
   res.cookie('test_cookie', 'cookie_value', {
     httpOnly: true,
-    secure: true,
-    sameSite: 'none',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 3600000 // 1 hour
   });
   
@@ -52,30 +58,42 @@ router.get('/test-cookie', (req, res) => {
   });
 });
 
+// Middleware to ensure Google OAuth is configured before invoking passport strategy
+const ensureGoogleAuthConfigured = (req, res, next) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(503).json({
+      error: 'OAuth Not Configured',
+      message: 'Google OAuth credentials are not configured on the server.'
+    });
+  }
+  return next();
+};
+
 // Google OAuth routes
 router.get('/google',
+  ensureGoogleAuthConfigured,
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
 // Google OAuth callback
-router.get('/google/callback', 
-  passport.authenticate('google', {
-    failureRedirect: '/login/failed',
-    session: true
-  }),
+router.get('/google/callback',
+  ensureGoogleAuthConfigured,
+  (req, res, next) => {
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5174').replace(/\/+$/, '');
+    passport.authenticate('google', {
+      failureRedirect: `${frontendUrl}/login?error=auth_failed`,
+      session: true
+    })(req, res, next);
+  },
   (req, res) => {
-    // Log user and redirect URL for debugging
-    console.log('OAuth successful, user authenticated:', req.user?.id);
-    
     // Ensure the session is saved before redirecting
     req.session.save((err) => {
       if (err) {
         console.error('Session save error:', err);
       }
       
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+      const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5174').replace(/\/+$/, '');
       const redirectUrl = `${frontendUrl}?auth_success=true&uid=${req.user?.id || 'unknown'}`;
-      console.log('Redirecting to:', redirectUrl);
       
       // Redirect to frontend after successful login
       res.redirect(redirectUrl);

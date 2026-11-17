@@ -15,12 +15,15 @@ export const isAuthenticated = (req, res, next) => {
   if (isDevBypass) {
     if (!req.user) {
       req.user = {
-        id: 'dev-user-123',
+        _id: '645a1d7c16f68e412f82f231',
+        id: '645a1d7c16f68e412f82f231',
         googleId: '123456789',
         email: 'dev@example.com',
         displayName: 'Development User',
         role: 'admin'
       };
+    } else if (!req.user._id && req.user.id) {
+      req.user._id = req.user.id;
     }
     return next();
   }

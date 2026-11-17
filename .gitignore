@@ -1,22 +1,34 @@
-# Environment variables
+# Environment variables and secrets
 .env
 .env.*
+*.env
+*.env.*
+**/.env
+**/.env.*
 !.env.example
-backend/.env
-crm-frontend/.env
+!**/.env.example
 
-# Token notes and upstream scratch files
+# Credentials, tokens, and alert notes
+*token*.txt
+*secret*.txt
+*credential*
+*SECURITY*.txt
 github_token_instructions.txt
 push_with_new_token.txt
 SECURITY_ALERT.txt
 
 # Dependency directories
 node_modules/
+**/node_modules/
+
+# Production build outputs
 dist/
+**/dist/
 build/
+**/build/
 
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -26,15 +38,17 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# IDE related
+# IDE and Editor files
 .idea/
 .vscode/
 *.sublime-project
 *.sublime-workspace
 
-# Coverage reports
+# Coverage and test artifacts
 coverage/
+**/coverage/
 
-# Temporary files
+# Temporary and scratch files
 tmp/
-temp/ 
+temp/
+scratch/ 

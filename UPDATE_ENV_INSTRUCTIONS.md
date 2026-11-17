@@ -20,7 +20,7 @@ Edit your `crm-frontend/.env` file and update these variables:
 ```
 VITE_API_URL=https://mini-crm-backend-1z1s.onrender.com
 VITE_AUTH_URL=https://mini-crm-backend-1z1s.onrender.com/auth
-VITE_GOOGLE_CLIENT_ID=169899239313-7gfl6t70rtssijeukl1rbrek10h1v8ia.apps.googleusercontent.com
+VITE_GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
 ```
 
 ## 3. Google OAuth Configuration

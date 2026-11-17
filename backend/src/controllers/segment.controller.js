@@ -1,16 +1,60 @@
+import mongoose from 'mongoose';
 import Segment from '../models/segment.model.js';
 import User from '../models/user.model.js';
+import Customer from '../models/customer.model.js';
+
+// Helper to reliably resolve a valid ObjectId for createdBy / updatedBy
+const getUserId = (req) => {
+  if (req?.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+    return req.user._id;
+  }
+  if (req?.user?.id && mongoose.Types.ObjectId.isValid(req.user.id)) {
+    return req.user.id;
+  }
+  if (req?.body?.createdBy && mongoose.Types.ObjectId.isValid(req.body.createdBy)) {
+    return req.body.createdBy;
+  }
+  return '645a1d7c16f68e412f82f231';
+};
+
+// Helper to calculate matching members count for dynamic segments
+const calculateDynamicMemberCount = async (segment) => {
+  if (segment.type === 'dynamic' && Array.isArray(segment.criteria) && segment.criteria.length > 0) {
+    try {
+      const rules = {
+        operator: 'AND',
+        conditions: segment.criteria.map(c => ({
+          type: c.field,
+          operator: c.operator === 'greaterThan' ? '>' :
+                   c.operator === 'lessThan' ? '<' :
+                   c.operator === 'equals' ? '=' : c.operator,
+          value: c.value
+        }))
+      };
+      const matchingCustomers = await Customer.findBySegmentRules(rules);
+      return matchingCustomers.length;
+    } catch (countErr) {
+      console.warn('Could not calculate segment memberCount:', countErr.message);
+    }
+  }
+  return segment.memberCount || 0;
+};
 
 // Create a new segment
 export const createSegment = async (req, res) => {
   try {
+    const createdBy = getUserId(req);
     const segment = new Segment({
       ...req.body,
-      createdBy: req.user._id
+      createdBy
     });
+
+    segment.memberCount = await calculateDynamicMemberCount(segment);
+
     await segment.save();
     res.status(201).json(segment);
   } catch (error) {
+    console.error('Error creating segment:', error.message);
     res.status(400).json({
       error: {
         message: error.message,
@@ -81,16 +125,18 @@ export const updateSegment = async (req, res) => {
     
     // Update segment fields
     Object.keys(req.body).forEach(key => {
-      if (key !== 'members') { // Handle members separately
+      if (key !== 'members' && key !== 'createdBy') { // Handle members and createdBy separately
         segment[key] = req.body[key];
       }
     });
     
-    segment.updatedBy = req.user._id;
+    segment.updatedBy = getUserId(req);
+    segment.memberCount = await calculateDynamicMemberCount(segment);
     await segment.save();
     
     res.json(segment);
   } catch (error) {
+    console.error('Error updating segment:', error.message);
     res.status(400).json({
       error: {
         message: error.message,
@@ -114,9 +160,14 @@ export const deleteSegment = async (req, res) => {
       });
     }
     
-    await segment.remove();
+    if (typeof segment.deleteOne === 'function') {
+      await segment.deleteOne();
+    } else {
+      await Segment.findByIdAndDelete(req.params.id);
+    }
     res.json({ message: 'Segment deleted successfully' });
   } catch (error) {
+    console.error('Error deleting segment:', error.message);
     res.status(500).json({
       error: {
         message: error.message,
@@ -231,11 +282,13 @@ export const updateCriteria = async (req, res) => {
     }
     
     segment.criteria = req.body.criteria;
-    segment.updatedBy = req.user._id;
+    segment.updatedBy = getUserId(req);
+    segment.memberCount = await calculateDynamicMemberCount(segment);
     await segment.save();
     
     res.json(segment);
   } catch (error) {
+    console.error('Error updating criteria:', error.message);
     res.status(400).json({
       error: {
         message: error.message,

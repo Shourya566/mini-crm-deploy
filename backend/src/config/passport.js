@@ -25,44 +25,46 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// Google OAuth Strategy
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    console.log('Google OAuth profile:', profile);
-    try {
-      // Find existing user
-      let user = await User.findOne({ googleId: profile.id });
-      
-      if (!user) {
-        // Create new user if doesn't exist
-        user = await User.create({
-          googleId: profile.id,
-          email: profile.emails[0].value,
-          displayName: profile.displayName,
-          firstName: profile.name.givenName,
-          lastName: profile.name.familyName,
-          profilePicture: profile.photos[0].value
-        });
-        console.log('Created new user:', user);
-      } else {
-        // Update existing user
-        user.displayName = profile.displayName;
-        user.firstName = profile.name.givenName;
-        user.lastName = profile.name.familyName;
-        user.profilePicture = profile.photos[0].value;
-        user.lastLogin = new Date();
-        await user.save();
-        console.log('Updated existing user:', user);
+// Google OAuth Strategy (only registered if credentials are configured)
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(new GoogleStrategy({
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
+      proxy: true
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        // Find existing user
+        let user = await User.findOne({ googleId: profile.id });
+        
+        if (!user) {
+          // Create new user if doesn't exist
+          user = await User.create({
+            googleId: profile.id,
+            email: profile.emails?.[0]?.value,
+            displayName: profile.displayName,
+            firstName: profile.name?.givenName,
+            lastName: profile.name?.familyName,
+            profilePicture: profile.photos?.[0]?.value
+          });
+        } else {
+          // Update existing user
+          user.displayName = profile.displayName;
+          user.firstName = profile.name?.givenName;
+          user.lastName = profile.name?.familyName;
+          user.profilePicture = profile.photos?.[0]?.value;
+          user.lastLogin = new Date();
+          await user.save();
+        }
+        
+        return done(null, user);
+      } catch (error) {
+        console.error('Error in Google OAuth strategy:', error);
+        return done(error, null);
       }
-      
-      return done(null, user);
-    } catch (error) {
-      console.error('Error in Google OAuth strategy:', error);
-      return done(error, null);
     }
-  }
-)); 
+  ));
+} else {
+  console.warn('Google OAuth credentials not configured; Google login strategy is disabled.');
+} 
