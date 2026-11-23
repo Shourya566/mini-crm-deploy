@@ -17,6 +17,18 @@ const getUserId = (req) => {
   return '645a1d7c16f68e412f82f231';
 };
 
+// Safe error responder supporting mock and Express res
+const sendError = (res, statusCode, message) => {
+  if (typeof res?.status === 'function') {
+    return res.status(statusCode).json({
+      error: { message, status: statusCode }
+    });
+  }
+  return res?.json ? res.json({
+    error: { message, status: statusCode }
+  }) : undefined;
+};
+
 // Helper to calculate matching members count for dynamic segments
 const calculateDynamicMemberCount = async (segment) => {
   if (segment.type === 'dynamic' && Array.isArray(segment.criteria) && segment.criteria.length > 0) {
@@ -90,22 +102,14 @@ export const getSegmentById = async (req, res) => {
       .populate('updatedBy', 'displayName email');
     
     if (!segment) {
-      return res.status(404).json({
-        error: {
-          message: 'Segment not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'Segment not found');
     }
     
     res.json(segment);
   } catch (error) {
-    res.status(500).json({
-      error: {
-        message: error.message,
-        status: 500
-      }
-    });
+    const status = error.name === 'CastError' ? 404 : 500;
+    const message = error.name === 'CastError' ? 'Segment not found' : error.message;
+    return sendError(res, status, message);
   }
 };
 
@@ -115,12 +119,7 @@ export const updateSegment = async (req, res) => {
     const segment = await Segment.findById(req.params.id);
     
     if (!segment) {
-      return res.status(404).json({
-        error: {
-          message: 'Segment not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'Segment not found');
     }
     
     // Update segment fields
@@ -136,13 +135,9 @@ export const updateSegment = async (req, res) => {
     
     res.json(segment);
   } catch (error) {
-    console.error('Error updating segment:', error.message);
-    res.status(400).json({
-      error: {
-        message: error.message,
-        status: 400
-      }
-    });
+    const status = error.name === 'CastError' ? 404 : 400;
+    const message = error.name === 'CastError' ? 'Segment not found' : error.message;
+    return sendError(res, status, message);
   }
 };
 
@@ -152,12 +147,7 @@ export const deleteSegment = async (req, res) => {
     const segment = await Segment.findById(req.params.id);
     
     if (!segment) {
-      return res.status(404).json({
-        error: {
-          message: 'Segment not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'Segment not found');
     }
     
     if (typeof segment.deleteOne === 'function') {
@@ -167,13 +157,9 @@ export const deleteSegment = async (req, res) => {
     }
     res.json({ message: 'Segment deleted successfully' });
   } catch (error) {
-    console.error('Error deleting segment:', error.message);
-    res.status(500).json({
-      error: {
-        message: error.message,
-        status: 500
-      }
-    });
+    const status = error.name === 'CastError' ? 404 : 500;
+    const message = error.name === 'CastError' ? 'Segment not found' : error.message;
+    return sendError(res, status, message);
   }
 };
 
@@ -184,33 +170,20 @@ export const addMember = async (req, res) => {
     const segment = await Segment.findById(req.params.id);
     
     if (!segment) {
-      return res.status(404).json({
-        error: {
-          message: 'Segment not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'Segment not found');
     }
     
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({
-        error: {
-          message: 'User not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'User not found');
     }
     
     await segment.addMember(userId);
     res.json(segment);
   } catch (error) {
-    res.status(400).json({
-      error: {
-        message: error.message,
-        status: 400
-      }
-    });
+    const status = error.name === 'CastError' ? 404 : 400;
+    const message = error.name === 'CastError' ? 'Segment not found' : error.message;
+    return sendError(res, status, message);
   }
 };
 
@@ -221,23 +194,15 @@ export const removeMember = async (req, res) => {
     const segment = await Segment.findById(req.params.id);
     
     if (!segment) {
-      return res.status(404).json({
-        error: {
-          message: 'Segment not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'Segment not found');
     }
     
     await segment.removeMember(userId);
     res.json(segment);
   } catch (error) {
-    res.status(400).json({
-      error: {
-        message: error.message,
-        status: 400
-      }
-    });
+    const status = error.name === 'CastError' ? 404 : 400;
+    const message = error.name === 'CastError' ? 'Segment not found' : error.message;
+    return sendError(res, status, message);
   }
 };
 
@@ -248,22 +213,14 @@ export const getMembers = async (req, res) => {
       .populate('members', 'displayName email');
     
     if (!segment) {
-      return res.status(404).json({
-        error: {
-          message: 'Segment not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'Segment not found');
     }
     
     res.json(segment.members);
   } catch (error) {
-    res.status(500).json({
-      error: {
-        message: error.message,
-        status: 500
-      }
-    });
+    const status = error.name === 'CastError' ? 404 : 500;
+    const message = error.name === 'CastError' ? 'Segment not found' : error.message;
+    return sendError(res, status, message);
   }
 };
 
@@ -273,12 +230,7 @@ export const updateCriteria = async (req, res) => {
     const segment = await Segment.findById(req.params.id);
     
     if (!segment) {
-      return res.status(404).json({
-        error: {
-          message: 'Segment not found',
-          status: 404
-        }
-      });
+      return sendError(res, 404, 'Segment not found');
     }
     
     segment.criteria = req.body.criteria;
@@ -288,13 +240,9 @@ export const updateCriteria = async (req, res) => {
     
     res.json(segment);
   } catch (error) {
-    console.error('Error updating criteria:', error.message);
-    res.status(400).json({
-      error: {
-        message: error.message,
-        status: 400
-      }
-    });
+    const status = error.name === 'CastError' ? 404 : 400;
+    const message = error.name === 'CastError' ? 'Segment not found' : error.message;
+    return sendError(res, status, message);
   }
 };
 

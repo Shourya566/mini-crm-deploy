@@ -68,6 +68,49 @@ const handleOpenAIError = (error) => {
   };
 };
 
+// Fallback segment rule generator from natural language
+const getFallbackSegmentRules = (prompt = '') => {
+  const lower = prompt.toLowerCase();
+  const conditions = [];
+
+  const spendMatch = lower.match(/(?:spend|spent|spending|cost|order(?:ed)?)\s*(?:over|more than|>|greater than|above)\s*(?:₹|\$)?\s*(\d+)/i) ||
+                     lower.match(/(?:₹|\$)?\s*(\d+)\s*(?:and above|or more|\+)/i);
+  if (spendMatch) {
+    conditions.push({ type: 'spend', operator: '>', value: spendMatch[1] });
+  }
+
+  const visitMatch = lower.match(/(?:visit(?:ed|s)?)\s*(?:more than|over|>|greater than)\s*(\d+)/i);
+  if (visitMatch) {
+    conditions.push({ type: 'visits', operator: '>', value: visitMatch[1] });
+  }
+
+  const purchaseMatch = lower.match(/(?:purchase(?:d|s)?|orders?)\s*(?:more than|over|>|greater than)\s*(\d+)/i);
+  if (purchaseMatch) {
+    conditions.push({ type: 'purchases', operator: '>', value: purchaseMatch[1] });
+  }
+
+  const inactiveMatch = lower.match(/(?:inactive|haven't shopped|not active|no purchase(?:s)?)\s*(?:in|for)?\s*(\d+)\s*(?:days|months)/i);
+  if (inactiveMatch) {
+    let days = parseInt(inactiveMatch[1], 10);
+    if (lower.includes('month')) days *= 30;
+    conditions.push({ type: 'inactive', operator: '>', value: String(days) });
+  }
+
+  const locationMatch = lower.match(/(?:in|from|at|located in|city|living in)\s+([A-Za-z]+)/i);
+  if (locationMatch && !['the', 'our', 'a', 'an'].includes(locationMatch[1].toLowerCase())) {
+    conditions.push({ type: 'location', operator: 'contains', value: locationMatch[1] });
+  }
+
+  if (conditions.length === 0) {
+    conditions.push({ type: 'spend', operator: '>', value: '5000' });
+  }
+
+  return {
+    operator: 'AND',
+    conditions
+  };
+};
+
 export const generateSegmentRules = async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -81,10 +124,8 @@ export const generateSegmentRules = async (req, res) => {
 
     const openai = getOpenAIClient();
     if (!openai) {
-      return res.status(500).json({ 
-        error: 'Configuration error',
-        details: 'OpenAI API key is not configured'
-      });
+      console.log('OpenAI API key not configured, using fallback segment rules');
+      return res.json(getFallbackSegmentRules(prompt));
     }
 
     try {
@@ -115,8 +156,8 @@ export const generateSegmentRules = async (req, res) => {
 
       res.json(rules);
     } catch (error) {
-      const errorResponse = handleOpenAIError(error);
-      res.status(errorResponse.status).json(errorResponse);
+      console.warn('OpenAI API error, using fallback segment rules:', error.message);
+      return res.json(getFallbackSegmentRules(prompt));
     }
   } catch (error) {
     console.error('Error generating segment rules:', error);

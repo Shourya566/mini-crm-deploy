@@ -10,6 +10,7 @@ router.post('/audience-preview', previewAudienceSize);
 
 // These routes work without authentication for now
 router.get('/', getCampaigns);
+router.get('/history', getCampaigns);
 router.get('/:id', getCampaignById);
 
 // Routes that require authentication

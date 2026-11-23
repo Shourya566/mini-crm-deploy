@@ -5,6 +5,8 @@
  * In a real implementation, this would be replaced with actual API calls.
  */
 
+import { handleDeliveryReceipt } from '../controllers/delivery-receipt.controller.js';
+
 // Configuration
 const VENDOR_CONFIG = {
   apiKey: 'dummy-api-key-12345',
@@ -46,9 +48,7 @@ const simulateDelivery = async (messageId, callbackUrl) => {
   try {
     console.log(`[Vendor API] Sending delivery receipt for ${messageId} to ${callbackUrl}`);
     
-    // In a real implementation, this would be an HTTP request to the callback URL
-    // For this demo, we'll call the receipt handler directly
-    const { handleDeliveryReceipt } = require('../controllers/delivery-receipt.controller.js');
+    // For this simulated demo, deliver receipt directly to controller
     await handleDeliveryReceipt({ body: receiptData });
     
     console.log(`[Vendor API] Delivery receipt sent for ${messageId} - Status: ${isDelivered ? 'delivered' : 'failed'}`);

@@ -1,7 +1,22 @@
 import Campaign from '../models/campaign.model.js';
+import Customer from '../models/customer.model.js';
 import campaignDeliveryService from '../services/campaign-delivery.service.js';
 import CommunicationLog from '../models/communication-log.model.js';
 import mongoose from 'mongoose';
+
+// Helper to reliably resolve a valid ObjectId for createdBy / updatedBy
+const getUserId = (req) => {
+  if (req?.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+    return req.user._id;
+  }
+  if (req?.user?.id && mongoose.Types.ObjectId.isValid(req.user.id)) {
+    return req.user.id;
+  }
+  if (req?.body?.createdBy && mongoose.Types.ObjectId.isValid(req.body.createdBy)) {
+    return req.body.createdBy;
+  }
+  return '645a1d7c16f68e412f82f231';
+};
 
 // Helper function to validate segment rules
 const validateSegmentRules = (rules) => {
@@ -40,11 +55,10 @@ export const createCampaign = async (req, res) => {
   console.log('Campaign creation request received:', req.body);
   
   try {
-    // Create a new campaign without requiring user authentication
+    // Create a new campaign, attributing to authenticated user or valid fallback
     const campaignData = {
       ...req.body,
-      // Use a default user ID for testing
-      createdBy: '645a1d7c16f68e412f82f231' // Replace with a valid ObjectId from your MongoDB
+      createdBy: getUserId(req)
     };
     
     // Set defaults if missing
@@ -120,6 +134,15 @@ export const getCampaigns = async (req, res) => {
 // Get campaign by ID
 export const getCampaignById = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        error: {
+          message: 'Campaign not found',
+          status: 404
+        }
+      });
+    }
+
     const campaign = await Campaign.findById(req.params.id)
       .populate('segments', 'name')
       .populate('createdBy', 'displayName email')
@@ -148,6 +171,15 @@ export const getCampaignById = async (req, res) => {
 // Update campaign
 export const updateCampaign = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        error: {
+          message: 'Campaign not found',
+          status: 404
+        }
+      });
+    }
+
     const campaign = await Campaign.findById(req.params.id);
     
     if (!campaign) {
@@ -164,7 +196,7 @@ export const updateCampaign = async (req, res) => {
       campaign[key] = req.body[key];
     });
     
-    campaign.updatedBy = req.user._id;
+    campaign.updatedBy = getUserId(req);
     await campaign.save();
     
     res.json(campaign);
@@ -181,6 +213,15 @@ export const updateCampaign = async (req, res) => {
 // Delete campaign
 export const deleteCampaign = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        error: {
+          message: 'Campaign not found',
+          status: 404
+        }
+      });
+    }
+
     const campaign = await Campaign.findById(req.params.id);
     
     if (!campaign) {
@@ -207,6 +248,15 @@ export const deleteCampaign = async (req, res) => {
 // Update campaign status
 export const updateCampaignStatus = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        error: {
+          message: 'Campaign not found',
+          status: 404
+        }
+      });
+    }
+
     const { status } = req.body;
     const campaign = await Campaign.findById(req.params.id);
     
@@ -220,7 +270,7 @@ export const updateCampaignStatus = async (req, res) => {
     }
     
     campaign.status = status;
-    campaign.updatedBy = req.user._id;
+    campaign.updatedBy = getUserId(req);
     await campaign.save();
     
     res.json(campaign);
@@ -237,6 +287,15 @@ export const updateCampaignStatus = async (req, res) => {
 // Get campaign metrics
 export const getCampaignMetrics = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        error: {
+          message: 'Campaign not found',
+          status: 404
+        }
+      });
+    }
+
     const campaign = await Campaign.findById(req.params.id)
       .select('metrics name status');
     
@@ -278,16 +337,22 @@ export const previewAudienceSize = async (req, res) => {
       });
     }
     
-    // This would typically involve a database query to count matching users
-    // For demo purposes, we'll simulate this with a realistic algorithm
-    
-    // Simulate some processing time
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Total audience size base
+    // Check if actual customers exist in database
+    const totalCustomers = await Customer.countDocuments();
+    if (totalCustomers > 0) {
+      const matchingCustomers = await Customer.findBySegmentRules(segmentRules);
+      const audienceSize = matchingCustomers.length;
+      return res.json({
+        totalAudience: totalCustomers,
+        audienceSize,
+        percentage: ((audienceSize / totalCustomers) * 100).toFixed(1)
+      });
+    }
+
+    // Total audience size fallback base
     const baseSize = 10000;
     
-    // Calculate a more realistic audience size based on the specific rules
+    // Calculate a realistic audience size based on the specific rules
     const audienceSize = calculateAudienceSize(segmentRules, baseSize);
     
     res.json({
@@ -426,6 +491,15 @@ const applyConditionFactor = (condition, audienceSize) => {
 export const getCampaignCommunicationLogs = async (req, res) => {
   try {
     const { id: campaignId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      return res.status(404).json({
+        error: {
+          message: 'Campaign not found',
+          status: 404
+        }
+      });
+    }
+
     const { page = 1, limit = 50, status } = req.query;
     
     // Convert page and limit to numbers
@@ -469,6 +543,14 @@ export const getCampaignCommunicationLogs = async (req, res) => {
 export const getCommunicationLogStats = async (req, res) => {
   try {
     const { id: campaignId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      return res.status(404).json({
+        error: {
+          message: 'Campaign not found',
+          status: 404
+        }
+      });
+    }
     
     // Check if campaign exists
     const campaign = await Campaign.findById(campaignId);
@@ -483,7 +565,7 @@ export const getCommunicationLogStats = async (req, res) => {
     
     // Aggregate stats by status
     const statusStats = await CommunicationLog.aggregate([
-      { $match: { campaignId: mongoose.Types.ObjectId(campaignId) } },
+      { $match: { campaignId: new mongoose.Types.ObjectId(campaignId) } },
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
     

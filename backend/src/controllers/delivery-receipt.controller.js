@@ -51,7 +51,8 @@ const startProcessingQueue = () => {
   console.log('[Delivery Receipt] Starting queue processing');
   
   // Schedule the first processing
-  setTimeout(processReceiptBatch, 0);
+  const timer = setTimeout(processReceiptBatch, 0);
+  if (timer.unref) timer.unref();
 };
 
 /**
@@ -147,7 +148,8 @@ const processReceiptBatch = async () => {
     
     // Schedule the next batch if there are more receipts
     if (receiptQueue.length > 0) {
-      setTimeout(processReceiptBatch, PROCESSING_INTERVAL);
+      const nextTimer = setTimeout(processReceiptBatch, PROCESSING_INTERVAL);
+      if (nextTimer.unref) nextTimer.unref();
     } else {
       processingActive = false;
       console.log('[Delivery Receipt] Queue empty, processing complete');
@@ -157,7 +159,8 @@ const processReceiptBatch = async () => {
     
     // Keep processing even if there's an error
     if (receiptQueue.length > 0) {
-      setTimeout(processReceiptBatch, PROCESSING_INTERVAL);
+      const retryTimer = setTimeout(processReceiptBatch, PROCESSING_INTERVAL);
+      if (retryTimer.unref) retryTimer.unref();
     } else {
       processingActive = false;
     }
