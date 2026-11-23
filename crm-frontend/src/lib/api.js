@@ -2,19 +2,17 @@ import axios from 'axios';
 
 // Determine the base URL based on environment
 const getBaseUrl = () => {
-  // If the VITE_API_URL environment variable is set, use it (strip trailing slashes)
-  if (import.meta.env.VITE_API_URL) {
+  // If explicitly configured to force direct external backend calls (opt-in override)
+  if (import.meta.env.VITE_FORCE_CROSS_ORIGIN === 'true' && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL.trim().replace(/\/+$/, '');
   }
 
-  // In production, warn if VITE_API_URL is missing and fall back to same origin
-  if (import.meta.env.PROD) {
-    console.error('VITE_API_URL is not configured for production. Please set it in your deployment environment variables.');
-    return typeof window !== 'undefined' ? window.location.origin : '';
-  }
-
-  // Default to localhost for development
-  return 'http://localhost:3001';
+  // Same-site architecture (recommended):
+  // When running on Vercel or local Vite dev server, use relative path ('')
+  // so all requests go to the same origin (/api and /auth), which are proxied
+  // to the backend. This guarantees 100% first-party cookies that are NEVER
+  // blocked by Chrome, Safari ITP, Firefox, or Brave.
+  return '';
 };
 
 // Create axios instance with default config

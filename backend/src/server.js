@@ -18,8 +18,9 @@ import segmentRoutes from './routes/segment.routes.js';
 import deliveryReceiptRoutes from './routes/delivery-receipt.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 
-// Import passport configuration
+// Import passport & CORS configuration
 import './config/passport.js';
+import { createCorsOptions } from './config/cors.js';
 
 // Import seed function
 import { seedCustomers } from './utils/seed-customers.js';
@@ -35,57 +36,12 @@ if (isProduction) {
   app.set('trust proxy', 1);
 }
 
-// Helper to parse comma-separated origin strings
-const parseOrigins = (str) => {
-  if (!str) return [];
-  return str.split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean);
-};
-
-// Configure CORS allowed origins
-const defaultLocalOrigins = !isProduction ? [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-] : [];
-
-const configuredOrigins = [
-  ...parseOrigins(process.env.CORS_ORIGIN),
-  ...parseOrigins(process.env.FRONTEND_URL),
-];
-
-const allowedOrigins = Array.from(new Set([
-  ...defaultLocalOrigins,
-  ...configuredOrigins,
-]));
-
-const isOriginAllowed = (origin) => {
-  if (!origin) return true; // Allow curl, health checks, or same-origin requests
-  if (!isProduction) return true; // Allow local dev origins
-
-  const cleanOrigin = origin.replace(/\/+$/, '');
-  return allowedOrigins.includes(cleanOrigin);
-};
-
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      return callback(null, true);
-    }
-    console.warn(`[CORS] Blocked request from disallowed origin: ${origin}`);
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Accept'],
-  exposedHeaders: ['Access-Control-Allow-Origin', 'Access-Control-Allow-Credentials'],
-};
+// Configure production-safe CORS (must be mounted before helmet & routes for preflight OPTIONS)
+const { allowedOrigins, corsOptions } = createCorsOptions(process.env);
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors(corsOptions));
-
-// Handle CORS preflight for all routes with the same credentials configuration
-app.options('*', cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -140,6 +96,7 @@ app.use(session({
   secret: sessionSecret || 'dev-only-session-secret',
   resave: false,
   saveUninitialized: false,
+  proxy: isProduction, // Trust Render reverse proxy for Secure cookies over HTTPS
   store: MongoStore.create({
     client: mongoose.connection.getClient(),
     ttl: 24 * 60 * 60, // 1 day
@@ -150,7 +107,7 @@ app.use(session({
     secure: isProduction, // Secure only in production over HTTPS
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 1 day
-    sameSite: isProduction ? 'none' : 'lax', // Lax for local dev HTTP, None for cross-site prod
+    sameSite: isProduction ? (process.env.COOKIE_SAMESITE || 'lax') : 'lax', // Lax for first-party same-site
     path: '/'
   },
   name: 'bolt.sid'
@@ -222,6 +179,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log(`Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 });
 
 // Handle unhandled promise rejections

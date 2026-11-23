@@ -71,7 +71,9 @@ export const AuthProvider = ({ children }) => {
   const login = () => {
     try {
       setError(null);
-      const authBaseUrl = import.meta.env.VITE_AUTH_URL || `${api.defaults.baseURL}/auth`;
+      const authBaseUrl = import.meta.env.VITE_FORCE_CROSS_ORIGIN === 'true' && import.meta.env.VITE_AUTH_URL
+        ? import.meta.env.VITE_AUTH_URL.trim().replace(/\/+$/, '')
+        : `${api.defaults.baseURL || ''}/auth`;
       const cleanAuthUrl = authBaseUrl.trim().replace(/\/+$/, '');
       window.location.href = `${cleanAuthUrl}/google`;
     } catch (err) {

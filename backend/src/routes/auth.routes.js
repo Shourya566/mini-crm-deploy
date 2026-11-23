@@ -1,6 +1,8 @@
 import express from 'express';
 import passport from 'passport';
+import signature from 'cookie-signature';
 import { isAuthenticated } from '../middleware/auth.middleware.js';
+import { generateSessionTicket, consumeSessionTicket } from '../utils/session-ticket.js';
 
 const router = express.Router();
 
@@ -75,11 +77,18 @@ router.get('/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
+const getFrontendUrl = () => {
+  const defaultUrl = process.env.NODE_ENV === 'production'
+    ? 'https://mini-crm-deploy.vercel.app'
+    : 'http://localhost:5174';
+  return (process.env.FRONTEND_URL || defaultUrl).trim().replace(/\/+$/, '');
+};
+
 // Google OAuth callback
 router.get('/google/callback',
   ensureGoogleAuthConfigured,
   (req, res, next) => {
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5174').replace(/\/+$/, '');
+    const frontendUrl = getFrontendUrl();
     passport.authenticate('google', {
       failureRedirect: `${frontendUrl}/login?error=auth_failed`,
       session: true
@@ -92,14 +101,57 @@ router.get('/google/callback',
         console.error('Session save error:', err);
       }
       
-      const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5174').replace(/\/+$/, '');
-      const redirectUrl = `${frontendUrl}?auth_success=true&uid=${req.user?.id || 'unknown'}`;
+      const frontendUrl = getFrontendUrl();
+      const host = (req.get('x-forwarded-host') || req.get('host') || '').toLowerCase();
       
-      // Redirect to frontend after successful login
+      // If the callback arrived directly on Render (cross-site from Vercel frontend),
+      // bridge the session to the Vercel domain via single-use ticket transfer
+      // so the cookie becomes a first-party cookie on the frontend domain.
+      if (host.includes('onrender.com') && frontendUrl.includes('vercel.app')) {
+        const ticket = generateSessionTicket(req.sessionID, req.user?.id);
+        const transferUrl = `${frontendUrl}/auth/session-transfer?ticket=${ticket}`;
+        console.log(`[Auth] Bridging session from ${host} to ${frontendUrl} via secure ticket`);
+        return res.redirect(transferUrl);
+      }
+      
+      const redirectUrl = `${frontendUrl}/?auth_success=true&uid=${req.user?.id || 'unknown'}`;
       res.redirect(redirectUrl);
     });
   }
 );
+
+// Secure single-use session transfer endpoint (bridges session to same-site frontend domain)
+router.get('/session-transfer', (req, res) => {
+  const { ticket } = req.query;
+  const frontendUrl = getFrontendUrl();
+
+  if (!ticket || typeof ticket !== 'string') {
+    return res.redirect(`${frontendUrl}/login?error=invalid_ticket`);
+  }
+
+  const ticketData = consumeSessionTicket(ticket);
+  if (!ticketData) {
+    console.warn('[Auth] Expired or invalid session ticket');
+    return res.redirect(`${frontendUrl}/login?error=session_expired`);
+  }
+
+  const isProduction = process.env.NODE_ENV === 'production';
+  const sessionSecret = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'dev-only-session-secret';
+  const signedCookieValue = 's:' + signature.sign(ticketData.sessionId, sessionSecret);
+
+  // Set the bolt.sid session cookie on this response.
+  // Because this request is routed through Vercel (https://mini-crm-deploy.vercel.app/auth/session-transfer),
+  // the cookie is stored as a 100% FIRST-PARTY cookie on mini-crm-deploy.vercel.app!
+  res.cookie('bolt.sid', signedCookieValue, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? (process.env.COOKIE_SAMESITE || 'lax') : 'lax',
+    maxAge: 24 * 60 * 60 * 1000, // 1 day
+    path: '/'
+  });
+
+  return res.redirect(`${frontendUrl}/?auth_success=true&uid=${ticketData.userId || 'unknown'}`);
+});
 
 
 // Get current user
@@ -113,11 +165,32 @@ router.get('/me', isAuthenticated, (req, res) => {
 
 // Logout
 router.get('/logout', (req, res) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const sameSite = isProduction ? (process.env.COOKIE_SAMESITE || 'lax') : 'lax';
+
   req.logout((err) => {
     if (err) {
       return res.status(500).json({ message: 'Logout failed' });
     }
-    res.json({ message: 'Logged out successfully' });
+    if (req.session) {
+      req.session.destroy(() => {
+        res.clearCookie('bolt.sid', {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite,
+          path: '/'
+        });
+        res.json({ message: 'Logged out successfully' });
+      });
+    } else {
+      res.clearCookie('bolt.sid', {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite,
+        path: '/'
+      });
+      res.json({ message: 'Logged out successfully' });
+    }
   });
 });
 
